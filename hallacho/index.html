@@ -188,8 +188,8 @@ const letters = G.letters.map((L, i) => {
   const front = el('g', { transform: `translate(${gcx} ${gcy})` }, glyph);
   const toIcon = d => d; // icon paths are authored around (0,0); shift into glyph space below
   const iconOuter = shiftPath(ic.outer, gcx, gcy);
-  const morph = flubber.interpolate(L.outer, iconOuter, { maxSegmentLength: 6 });
-  const holeMorph = L.holes[0] && ic.hole ? flubber.interpolate(L.holes[0], shiftPath(ic.hole, gcx, gcy), { maxSegmentLength: 6 }) : null;
+  const morph = flubber.interpolate(L.outer, iconOuter, { maxSegmentLength: 2 });
+  const holeMorph = L.holes[0] && ic.hole ? flubber.interpolate(L.holes[0], shiftPath(ic.hole, gcx, gcy), { maxSegmentLength: 2 }) : null;
   const labelKo = riser(cam, ic.ko, { x: wx, y: 708, size: 50, weight: 800, fill: C.ink });
   const labelEn = riser(cam, ic.en.toUpperCase(), { x: wx, y: 748, size: 20, weight: 700, fill: C.gray, ls: 3 });
   return { L, ic, i, gcx, gcy, wx, wy, outer, inner, body, paint, clip, holeEl, back, front, morph, holeMorph, labelKo, labelEn, iconOuter };

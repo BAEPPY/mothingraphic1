@@ -27,7 +27,7 @@ if (mode === 'stills') {
 } else if (mode === 'film') {
   const fps = 60, sub = Number(process.env.SUB || 4), dur = 15;
   const ff = spawn('ffmpeg', ['-y', '-f', 'image2pipe', '-framerate', String(fps * sub), '-i', '-',
-    '-vf', `tmix=frames=${sub}:weights=1,select='not(mod(n\\,${sub}))',setpts=N/${fps}/TB`, '-r', String(fps),
+    '-vf', `tmix=frames=${sub}:weights=1,select='eq(mod(n\\,${sub})\\,${sub - 1})',setpts=N/${fps}/TB`, '-r', String(fps),
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '16', '-preset', 'slow', a], { stdio: ['pipe', 'inherit', 'inherit'] });
   const n = dur * fps * sub;
   for (let k = 0; k < n; k++) {
