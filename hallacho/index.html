@@ -232,6 +232,47 @@ const D = {};
   D.spark = [-135, -45].map(a => ({ a, e: el('line', { stroke: C.blue, 'stroke-width': 14, 'stroke-linecap': 'round' }, b.back) }));
 }
 
+// I-E.U.M: 나(I) at the centre, 배움(E), 삶(U), 꿈(M) around it
+const IEUM = { x: 1300, y: 560, rI: 92, r: 168, d: 142, R: 350 };
+const trioC = el('g', {}, cam);
+cam.insertBefore(trioC, dot);
+const trioL = el('g', {}, cam);
+const trioA = el('g', { fill: 'none', stroke: C.ink, 'stroke-width': 9, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, cam);
+cam.insertBefore(trioA, trioC);
+const RINGS = [
+  { k: 'E', ko: '배움', a: -90, color: C.coral },
+  { k: 'U', ko: '삶', a: 150, color: C.purple },
+  { k: 'M', ko: '꿈', a: 30, color: C.green },
+].map((o, k) => {
+  const c = el('circle', { r: 0, fill: o.color, style: 'mix-blend-mode:multiply' }, trioC);
+  const lg = el('g', {}, trioL);
+  const big = riser(lg, o.k, { x: 0, y: -8, size: 64, weight: 800, fill: '#FFFFFF' });
+  const ko = riser(lg, o.ko, { x: 0, y: 36, size: 34, weight: 800, fill: '#FFFFFF' });
+  return { ...o, k, c, lg, big, ko };
+});
+// arrows in the gaps: E → M → U → E
+const ARCS = [-30, 90, 210].map(g => {
+  const a0 = g - 19, a1 = g + 19, rad = d => d * Math.PI / 180;
+  const p = a => [IEUM.R * Math.cos(rad(a)), IEUM.R * Math.sin(rad(a))];
+  const [x0, y0] = p(a0), [x1, y1] = p(a1);
+  const arc = el('path', { d: `M${x0} ${y0}A${IEUM.R} ${IEUM.R} 0 0 1 ${x1} ${y1}`, pathLength: 100, 'stroke-dasharray': '0 200' }, trioA);
+  const head = el('path', { d: 'M-16-14L0 0L-16 14' }, trioA);
+  return { arc, head, x1, y1, ang: a1 + 90 };
+});
+const iBig = riser(cam, 'I', { x: IEUM.x, y: IEUM.y + 18, size: 84, weight: 800, fill: '#FFFFFF' });
+const iKo = riser(cam, '나', { x: IEUM.x, y: IEUM.y + 58, size: 26, weight: 700, fill: '#FFFFFF' });
+const badge = el('g', {}, cam);
+el('rect', { x: -150, y: -32, width: 300, height: 64, rx: 32, fill: C.ink }, badge);
+const badgeT = el('text', { x: 0, y: 11, 'text-anchor': 'middle', 'font-size': 30, 'font-weight': 800, fill: '#FFFFFF' }, badge);
+badgeT.textContent = '진로주도성 신장';
+const IX = 170;
+const ieumText = [
+  riser(cam, '배움과 삶, 꿈을 잇는', { x: IX, y: 392, size: 44, weight: 700, fill: C.gray, anchor: 'start' }),
+  riser(cam, '', { x: IX, y: 530, size: 124, weight: 800, anchor: 'start', spans: [['꿈 ', C.ink], ['I-E.U.M', C.blue]] }),
+  riser(cam, '진로연계 교육 모델', { x: IX, y: 618, size: 60, weight: 800, fill: C.ink, anchor: 'start' }),
+  riser(cam, '나(I)를 중심으로 배움·삶·꿈을 하나로 이어요', { x: IX, y: 700, size: 30, weight: 600, fill: C.gray, anchor: 'start' }),
+];
+
 // slogan + end lockup
 const slogan = riser(cam, '', { x: CX, y: 300, size: 64, weight: 800, spans: [['존중하며 성장하는 ', C.ink], ['참(CHARM)', C.blue], [' 좋은 학교', C.ink]] });
 const TITLE = '한라초등학교';
@@ -244,8 +285,9 @@ const TITLE_X = 590 + 182 + 70;
 const T = {
   dotPop: 0.05, toHead: 0.45, ring: 0.5, arms: 0.85, mono: 1.0, lock: 1.25, title: 1.35,
   out: 2.25, pill: 2.3, label: 2.4, m1: 2.6, m2: 3.05, m3: 3.5, mottoOut: 4.0, burst: 4.42,
-  v0: 5.0, vstep: 1.2, pull: 11.0, slogan: 11.4, hop: 11.9, collapse: 12.5, dotBack: 12.78, head: 13.05,
-  ring2: 13.15, arms2: 13.35, mono2: 13.45, title2: 13.6, end: 13.95,
+  v0: 5.0, vstep: 1.2, pull: 11.0, slogan: 11.4, hop: 11.9, collapse: 12.5, dotBack: 12.78,
+  ieum: 12.95, ieumOut: 15.2, head: 15.45,
+  ring2: 15.6, arms2: 15.8, mono2: 15.9, title2: 16.05, end: 16.4,
 };
 const camKeys = [[T.v0, 0]].concat(letters.slice(1).map((b, i) => [T.v0 + T.vstep * (i + 1), i + 1]));
 const vt = i => T.v0 + T.vstep * i;          // camera lands on letter i
@@ -276,12 +318,12 @@ async function frame(t) {
   const h0 = headOf({ x: CX, y: CY, s: 1.5 }), h1 = headOf(LOCK), h2 = headOf(LOCK_END);
   const pillH = [140, 260, 380];
   const dw = springs(t, 0, [[T.dotPop, 2 * h0.r, 15, 0.45], [T.lock, 2 * h1.r, 11, 0.8], [T.pill, 900, 12, 0.7], [T.mottoOut + 0.1, 92, 14, 0.75], [T.burst, 0, 16, 0.9],
-    [T.dotBack, 92, 15, 0.5], [T.head, 2 * h2.r, 12, 0.8]]);
+    [T.dotBack, 92, 15, 0.5], [T.ieum, 2 * IEUM.rI, 13, 0.6], [T.head, 2 * h2.r, 12, 0.8]]);
   const dh = springs(t, 0, [[T.dotPop, 2 * h0.r, 15, 0.45], [T.lock, 2 * h1.r, 11, 0.8], [T.pill, pillH[0], 12, 0.7], [T.m2 - 0.05, pillH[1], 14, 0.65], [T.m3 - 0.05, pillH[2], 14, 0.65],
-    [T.mottoOut + 0.1, 92, 14, 0.75], [T.burst, 0, 16, 0.9], [T.dotBack, 92, 15, 0.5], [T.head, 2 * h2.r, 12, 0.8]]);
-  const dx = springs(t, CX, [[T.toHead, h0.x, 11, 0.75], [T.lock, h1.x, 11, 0.8], [T.pill, CX, 12, 0.8], [T.head, h2.x, 11, 0.8]]);
+    [T.mottoOut + 0.1, 92, 14, 0.75], [T.burst, 0, 16, 0.9], [T.dotBack, 92, 15, 0.5], [T.ieum, 2 * IEUM.rI, 13, 0.6], [T.head, 2 * h2.r, 12, 0.8]]);
+  const dx = springs(t, CX, [[T.toHead, h0.x, 11, 0.75], [T.lock, h1.x, 11, 0.8], [T.pill, CX, 12, 0.8], [T.ieum, IEUM.x, 11, 0.8], [T.head, h2.x, 10, 0.82]]);
   const dyC = springs(t, CY, [[T.toHead, h0.y, 11, 0.75], [T.lock, h1.y, 11, 0.8], [T.pill, PILL_TOP + pillH[0] / 2, 12, 0.8], [T.m2 - 0.05, PILL_TOP + pillH[1] / 2, 14, 0.65],
-    [T.m3 - 0.05, PILL_TOP + pillH[2] / 2, 14, 0.65], [T.mottoOut + 0.1, CY, 13, 0.8], [T.head, h2.y, 11, 0.8]]);
+    [T.m3 - 0.05, PILL_TOP + pillH[2] / 2, 14, 0.65], [T.mottoOut + 0.1, CY, 13, 0.8], [T.ieum, IEUM.y, 11, 0.8], [T.head, h2.y, 10, 0.82]]);
   const aw = Math.max(0, dw), ah = Math.max(0, dh);
   set(dot, { x: dx - aw / 2, y: dyC - ah / 2, width: aw, height: ah, rx: Math.min(aw, ah) / 2 });
 
@@ -346,6 +388,38 @@ async function frame(t) {
   });
 
   drive(slogan, t, [[T.slogan, 1], [T.collapse - 0.05, -1]]);
+
+  // I-E.U.M
+  const out = T.ieumOut;
+  const orbit = 120 * spr(t, T.ieum + 1.6, 8, 0.72);
+  RINGS.forEach(o => {
+    const e = spr(t, T.ieum + 0.2 + 0.12 * o.k, 13, 0.55);
+    const c = eio(win(t, out + 0.04 * o.k, out + 0.3 + 0.04 * o.k));
+    const g = Math.max(0, e * (1 - c));
+    const a = (o.a + orbit) * Math.PI / 180;
+    set(o.c, { cx: IEUM.x + Math.cos(a) * IEUM.d * g, cy: IEUM.y + Math.sin(a) * IEUM.d * g, r: IEUM.r * g });
+    // label sits on the outer half of its circle and stays upright
+    const lx = IEUM.x + Math.cos(a) * (IEUM.d + 62) * g, ly = IEUM.y + Math.sin(a) * (IEUM.d + 62) * g;
+    o.lg.setAttribute('transform', `translate(${lx} ${ly}) scale(${g})`);
+    o.lg.setAttribute('visibility', g > 0.01 ? 'inherit' : 'hidden');
+    drive(o.big, t, [[T.ieum + 0.38 + 0.12 * o.k, 1]]);
+    drive(o.ko, t, [[T.ieum + 0.45 + 0.12 * o.k, 1]]);
+  });
+  ARCS.forEach((A, k) => {
+    const d = eio(win(t, T.ieum + 0.75 + 0.08 * k, T.ieum + 1.05 + 0.08 * k)) - eio(win(t, out - 0.05, out + 0.15));
+    A.arc.setAttribute('stroke-dasharray', `${Math.max(0, d) * 100} 200`);
+    A.arc.setAttribute('visibility', d > 0.002 ? 'inherit' : 'hidden');
+    const h = Math.max(0, spr(t, T.ieum + 1.0 + 0.08 * k, 18, 0.5)) * (1 - ein(win(t, out - 0.05, out + 0.1)));
+    A.head.setAttribute('transform', `translate(${A.x1} ${A.y1}) rotate(${A.ang}) scale(${h})`);
+    A.head.setAttribute('visibility', h > 0.01 ? 'inherit' : 'hidden');
+  });
+  trioA.setAttribute('transform', `translate(${IEUM.x} ${IEUM.y}) rotate(${orbit})`);
+  drive(iBig, t, [[T.ieum + 0.15, 1], [out, -1]]);
+  drive(iKo, t, [[T.ieum + 0.22, 1], [out, -1]]);
+  { const b = Math.max(0, spr(t, T.ieum + 1.25, 14, 0.5)) * (1 - ein(win(t, out, out + 0.2)));
+    badge.setAttribute('transform', `translate(${IX + 150} 800) scale(${b})`);
+    badge.setAttribute('visibility', b > 0.01 ? 'inherit' : 'hidden'); }
+  ieumText.forEach((r, k) => drive(r, t, [[T.ieum + 0.3 + 0.1 * k, 1], [out - 0.08 + 0.04 * k, -1]]));
   drive(endLine, t, [[T.end, 1]]);
 }
 
