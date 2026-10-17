@@ -25,7 +25,7 @@ if (mode === 'stills') {
     await page.screenshot({ path: path.join(b, `t${t.toFixed(2).padStart(5, '0')}.png`) });
   }
 } else if (mode === 'film') {
-  const fps = 60, sub = Number(process.env.SUB || 4), dur = Number(process.env.DUR || 30);
+  const fps = 60, sub = Number(process.env.SUB || 4), dur = Number(process.env.DUR || 25);
   const ff = spawn('ffmpeg', ['-y', '-f', 'image2pipe', '-framerate', String(fps * sub), '-i', '-',
     '-vf', `tmix=frames=${sub}:weights=1,select='eq(mod(n\\,${sub})\\,${sub - 1})',setpts=N/${fps}/TB`, '-r', String(fps),
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '16', '-preset', 'slow', a], { stdio: ['pipe', 'inherit', 'inherit'] });

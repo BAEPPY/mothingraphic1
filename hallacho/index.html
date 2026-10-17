@@ -292,6 +292,7 @@ let title;          // built after fonts load (needs measuring)
 let endLine;
 
 // ---------- timeline ----------
+const SPEED = 1.2;
 const LOCK = { x: 590, y: 540, s: 1.1 }, LOCK_END = { x: 590, y: 500, s: 1.1 };
 const TITLE_X = 590 + 182 + 70;
 const T = {
@@ -454,7 +455,8 @@ window.ready = (async () => {
   await document.fonts.ready;
   title = riser(cam, TITLE, { x: TITLE_X, y: 584, size: 120, weight: 800, fill: C.ink, anchor: 'start', perChar: true });
   endLine = riser(cam, '존중하며 성장하는 참(CHARM) 좋은 학교', { x: CX, y: 760, size: 44, weight: 700, fill: C.gray });
-  window.seek = async t => { await seekAll(t); };
+  // the timeline is authored at 30s; play it 1.2x faster (25s film)
+  window.seek = async t => { await seekAll(t * SPEED); };
 })();
 async function seekAll(t) {
   await frame(t);
