@@ -18,7 +18,6 @@
 <svg id="stage" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
   <defs id="defs"></defs>
   <rect width="1920" height="1080" fill="#F7F4EE"/>
-  <g id="floods"></g>
   <g id="cam"></g>
 </svg>
 <script>
@@ -127,14 +126,16 @@ const armMask = el('clipPath', { id: 'armClip', clipPathUnits: 'userSpaceOnUse' 
 const armPie = el('path', {}, armMask);
 const ringMask = el('clipPath', { id: 'ringClip', clipPathUnits: 'userSpaceOnUse' }, $('defs'));
 const ringPie = el('path', {}, ringMask);
-const arms = el('path', { d: 'M28 186A167.5 167.5 0 0 1 320 186', fill: 'none', stroke: C.blue, 'stroke-width': 13, 'stroke-linecap': 'round', 'clip-path': 'url(#armClip)' }, logo);
+const arms = el('path', { d: 'M22 186A186 186 0 0 1 322 186', fill: 'none', stroke: C.blue, 'stroke-width': 10.5, 'stroke-linecap': 'round', 'clip-path': 'url(#armClip)' }, logo);
 const ringG = el('g', { 'clip-path': 'url(#ringClip)' }, logo);
-el('path', { d: RING, fill: C.bg, stroke: C.bg, 'stroke-width': 14, 'stroke-linejoin': 'round' }, ringG);
+el('path', { d: RING, fill: C.bg, stroke: C.bg, 'stroke-width': 11, 'stroke-linejoin': 'round' }, ringG);
 el('path', { d: RING, fill: C.blue }, ringG);
-const mono = el('g', { fill: 'none', stroke: C.blue, 'stroke-width': 7, 'stroke-linecap': 'butt', 'stroke-linejoin': 'miter' }, logo);
-el('path', { d: 'M131 171L149 171M123 181L157 181' }, mono);
-el('ellipse', { cx: 140, cy: 197, rx: 12, ry: 9 }, mono);
-el('path', { d: 'M171 178L226 178L226 191L178 191L178 204L233 204' }, mono);
+// ㅎㄹ monogram, traced from the logo image: one top bar shared by ㅎ and ㄹ, a dome tick and a hanging ring
+const mono = el('g', { fill: C.blue, 'fill-rule': 'evenodd' }, logo);
+el('rect', { x: 115, y: 174, width: 111.5, height: 7.5, rx: 2 }, mono);
+el('path', { d: 'M131.5 174.5C134 173 135.5 169 141 169C146.5 169 148 173 150.5 174.5Z' }, mono);
+el('path', { d: 'M121 190A20.5 16 0 1 0 162 190A20.5 16 0 1 0 121 190ZM131 190A10 7.5 0 1 1 151 190A10 7.5 0 1 1 131 190Z' }, mono);
+el('path', { d: 'M216.5 174H226.5V193H184V199H226.5V206.5H174V188H216.5Z' }, mono);
 
 // 교훈 pill + lines
 const pillLabel = riser(cam, '교훈', { x: CX, y: 362, size: 40, weight: 700, fill: C.gray });
@@ -298,27 +299,11 @@ const mt = i => vt(i) + 0.35;                // morph starts
 function headOf(Lc) { return { x: Lc.x + 2 * Lc.s, y: Lc.y - 126 * Lc.s, r: 30 * Lc.s }; }
 
 // ---------- effects ----------
-// colour floods: discs overscale past the corners one after another; the last is the canvas colour
-const floods = [];
-function flood(t0, x, y, colors, Rmax, stagger = 0.11, dur = 0.42) {
-  const discs = colors.map(c => el('circle', { cx: x, cy: y, r: 0, fill: c }, $('floods')));
-  floods.push({ t0, discs, Rmax, stagger, dur });
-}
-
-flood(T.mottoOut + 0.35, CX, CY, [C.blue, C.yellow, C.coral, C.green, C.bg], 1250);
+// tinted disc behind each CHARM icon while the camera is on it
 const TINT = ['#FFEAB0', '#FFD8CF', '#E3DAFC', '#CDEFE1', '#FFD6E2'];
 const bds = letters.map((b, i) => el('circle', { cx: b.wx, cy: b.wy, r: 0, fill: TINT[i] }, backdrops));
-flood(T.ieumOut + 0.05, IEUM.x, IEUM.y, [C.coral, C.purple, C.green, C.yellow, C.bg], 1550);
 
 function effects(t) {
-  for (const F of floods) {
-    const end = F.t0 + F.stagger * (F.discs.length - 1) + F.dur;
-    F.discs.forEach((d, k) => {
-      const p = eio(win(t, F.t0 + F.stagger * k, F.t0 + F.stagger * k + F.dur));
-      d.setAttribute('r', F.Rmax * p);
-      d.setAttribute('visibility', p > 0 && t < end ? 'inherit' : 'hidden');
-    });
-  }
   bds.forEach((d, i) => {
     const off = i < 4 ? vt(i + 1) - 0.05 : T.pull;
     const g = Math.max(0, spr(t, mt(i) + 0.18, 11, 0.62)) * (1 - ein(win(t, off, off + 0.32)));
@@ -341,7 +326,7 @@ async function frame(t) {
   const ringA = 180 * (eout(win(t, T.ring, T.ring + 0.5)) - ein(win(t, T.out, T.out + 0.28)) + eout(win(t, T.ring2, T.ring2 + 0.45)));
   ringPie.setAttribute('d', pie(174, 200, 220, -90 - ringA, -90 + ringA));
   const armA = 75 * (eout(win(t, T.arms, T.arms + 0.4)) - ein(win(t, T.out, T.out + 0.22)) + eout(win(t, T.arms2, T.arms2 + 0.4)));
-  armPie.setAttribute('d', pie(174, 268, 240, -90 - armA, -90 + armA));
+  armPie.setAttribute('d', pie(172, 296, 260, -90 - armA, -90 + armA));
   const ms = springs(t, 0, [[T.mono, 1, 16, 0.45], [T.out, 0, 20, 1], [T.mono2, 1, 16, 0.45]]);
   mono.setAttribute('transform', `translate(174 190) scale(${Math.max(0, ms)}) translate(-174 -190)`);
 
