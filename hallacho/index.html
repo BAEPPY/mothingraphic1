@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>한라초 CHARM</title>
+<style>
+  @font-face { font-family: Pretendard; font-weight: 600; src: url(fonts/Pretendard-SemiBold.woff2) format('woff2'); }
+  @font-face { font-family: Pretendard; font-weight: 700; src: url(fonts/Pretendard-Bold.woff2) format('woff2'); }
+  @font-face { font-family: Pretendard; font-weight: 800; src: url(fonts/Pretendard-ExtraBold.woff2) format('woff2'); }
+  html, body { margin: 0; background: #F7F4EE; overflow: hidden; }
+  svg { display: block; width: 1920px; height: 1080px; }
+  text { font-family: Pretendard, sans-serif; }
+</style>
+<script src="vendor/flubber.min.js"></script>
+<script src="glyphs.js"></script>
+</head>
+<body>
+<svg id="stage" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <defs id="defs"></defs>
+  <rect width="1920" height="1080" fill="#F7F4EE"/>
+  <g id="cam"></g>
+</svg>
+<script>
+// 한라초 CHARM, 15s, 1920x1080. Every attribute is computed from t inside seek(t).
+// 120 BPM grid: beat n starts at (n-1)*0.5s.
+const NS = 'http://www.w3.org/2000/svg';
+const W = 1920, H = 1080, CX = 960, CY = 540;
+const C = {
+  bg: '#F7F4EE', ink: '#16181D', gray: '#6B6F78', blue: '#0037A8',
+  yellow: '#FFC531', coral: '#FF6A4D', purple: '#8E6CF0', green: '#1FAF7A', pink: '#FF5C8A', sky: '#4FB3FF',
+};
+
+// ---------- math ----------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, p) => a + (b - a) * p;
+// closed-form step response of a damped spring, 0 before t0
+function spr(t, t0, w = 14, z = 0.6) {
+  const s = t - t0;
+  if (s <= 0) return 0;
+  if (z >= 1) return 1 - Math.exp(-w * s) * (1 + w * s);
+  const wd = w * Math.sqrt(1 - z * z);
+  return 1 - Math.exp(-z * w * s) * (Math.cos(wd * s) + (z * w / wd) * Math.sin(wd * s));
+}
+// a value with many targets = base + sum of one spring per change
+function springs(t, base, changes, w, z) {
+  let v = base, prev = base;
+  for (const c of changes) {
+    const [t0, target, cw, cz] = c;
+    v += (target - prev) * spr(t, t0, cw ?? w, cz ?? z);
+    prev = target;
+  }
+  return v;
+}
+const win = (t, a, b) => clamp((t - a) / (b - a));
+const eio = p => p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+const eout = p => 1 - Math.pow(1 - p, 3);
+const ein = p => p * p * p;
+// rise/sink state: 1 = shown. events: [t0, +1 rise | -1 sink]
+function shown(t, events, w = 15, z = 0.72) {
+  let v = 0;
+  for (const [t0, d] of events) v += d > 0 ? spr(t, t0, w, z) : -ein(win(t, t0, t0 + 0.24));
+  return v;
+}
+const pulse = (t, a, w = 22, z = 0.35, len = 0.07) => spr(t, a, w, z) - spr(t, a + len, w, z);
+
+// ---------- dom helpers ----------
+const $ = id => document.getElementById(id);
+function el(tag, attrs = {}, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function set(e, attrs) { for (const k in attrs) e.setAttribute(k, attrs[k]); }
+let clipN = 0;
+function clipRect(x, y, w, h) {
+  const id = 'c' + (clipN++);
+  const cp = el('clipPath', { id, clipPathUnits: 'userSpaceOnUse' }, $('defs'));
+  const r = el('rect', { x, y, width: w, height: h }, cp);
+  return { id, rect: r, url: `url(#${id})` };
+}
+const circ = (x, y, r) => `M${x - r} ${y}A${r} ${r} 0 1 0 ${x + r} ${y}A${r} ${r} 0 1 0 ${x - r} ${y}Z`;
+function pie(cx, cy, R, a0, a1) { // degrees, clockwise from a0 to a1
+  if (a1 - a0 >= 359.9) return circ(cx, cy, R);
+  if (a1 - a0 <= 0.01) return '';
+  const p = a => [cx + R * Math.cos(a * Math.PI / 180), cy + R * Math.sin(a * Math.PI / 180)];
+  const [x0, y0] = p(a0), [x1, y1] = p(a1);
+  return `M${cx} ${cy}L${x0} ${y0}A${R} ${R} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1} ${y1}Z`;
+}
+// text that rises out of a mask line. one <text> per char when perChar.
+const measureCtx = document.createElement('canvas').getContext('2d');
+function riser(parent, str, { x, y, size, weight = 800, fill = C.ink, anchor = 'middle', perChar = false, ls = 0, spans = null }) {
+  measureCtx.font = `${weight} ${size}px Pretendard`;
+  const g = el('g', {}, parent);
+  const clip = clipRect(-5000, y - size * 1.25, 10000, size * 1.55);
+  g.setAttribute('clip-path', clip.url);
+  const parts = [];
+  const chars = perChar ? [...str] : [str];
+  const widths = chars.map(c => measureCtx.measureText(c).width + ls * [...c].length);
+  const total = widths.reduce((a, b) => a + b, 0) - ls;
+  let cx = anchor === 'middle' ? x - total / 2 : x;
+  chars.forEach((c, i) => {
+    const t = el('text', perChar ? { x: cx, y, 'font-size': size, 'font-weight': weight, fill, 'letter-spacing': ls }
+      : { x, y, 'text-anchor': anchor, 'font-size': size, 'font-weight': weight, fill, 'letter-spacing': ls }, g);
+    if (spans) for (const [s, color] of spans) { const ts = el('tspan', { fill: color }, t); ts.textContent = s; }
+    else t.textContent = c;
+    parts.push(t); cx += widths[i];
+  });
+  return { g, parts, size, clip };
+}
+function drive(r, t, events, stagger = 0) {
+  r.parts.forEach((p, i) => {
+    const ev = events.map(([t0, d]) => [t0 + i * stagger, d]);
+    const s = shown(t, ev);
+    p.setAttribute('transform', `translate(0 ${((1 - s) * r.size * 1.3).toFixed(2)})`);
+  });
+}
+
+// ---------- scene ----------
+const cam = $('cam');
+
+// logo, authored in source-image coords (344x316), anchored at (174,190)
+const RING = 'M153 272L132 268C92 256 66 236 66 200C66 146 114 106 174 106C234 106 282 146 282 200C282 236 256 256 216 268L195 272L195 238C226 228 240 210 240 192C240 162 212 142 174 142C136 142 110 162 110 192C110 210 124 228 153 238L153 272Z';
+const logo = el('g', {}, cam);
+const armMask = el('clipPath', { id: 'armClip', clipPathUnits: 'userSpaceOnUse' }, $('defs'));
+const armPie = el('path', {}, armMask);
+const ringMask = el('clipPath', { id: 'ringClip', clipPathUnits: 'userSpaceOnUse' }, $('defs'));
+const ringPie = el('path', {}, ringMask);
+const arms = el('path', { d: 'M28 186A167.5 167.5 0 0 1 320 186', fill: 'none', stroke: C.blue, 'stroke-width': 13, 'stroke-linecap': 'round', 'clip-path': 'url(#armClip)' }, logo);
+const ringG = el('g', { 'clip-path': 'url(#ringClip)' }, logo);
+el('path', { d: RING, fill: C.bg, stroke: C.bg, 'stroke-width': 14, 'stroke-linejoin': 'round' }, ringG);
+el('path', { d: RING, fill: C.blue }, ringG);
+const mono = el('g', { fill: 'none', stroke: C.blue, 'stroke-width': 7, 'stroke-linecap': 'butt', 'stroke-linejoin': 'miter' }, logo);
+el('path', { d: 'M131 171L149 171M123 181L157 181' }, mono);
+el('ellipse', { cx: 140, cy: 197, rx: 12, ry: 9 }, mono);
+el('path', { d: 'M171 178L226 178L226 191L178 191L178 204L233 204' }, mono);
+
+// 교훈 pill + lines
+const pillLabel = riser(cam, '교훈', { x: CX, y: 362, size: 40, weight: 700, fill: C.gray });
+const MOTTO = ['바르게 행하자', '부지런히 배우자', '튼튼하게 자라자'];
+const PILL_TOP = 400, LINE = 120;
+const mottoLines = MOTTO.map((s, i) => riser(cam, s, { x: CX, y: PILL_TOP + 70 + LINE * i + 26, size: 72, weight: 800, fill: '#FFFFFF' }));
+// the dot / pill sits under the motto text
+const dot = el('rect', { fill: C.blue }, cam);
+cam.insertBefore(dot, pillLabel.g);
+
+// CHARM word: letters → icons
+const G = window.GLYPHS;
+const WS = 0.75, WY = CY + 140 * WS;           // word scale, baseline
+const ICONS = [
+  { // C → light bulb (창의)
+    ko: '창의', en: 'Creativity', color: C.yellow,
+    outer: 'M-55 62C-55 30-105 2-105-40A105 105 0 1 1 105-40C105 2 55 30 55 62L55 96Q55 112 39 112L-39 112Q-55 112-55 96Z',
+  },
+  { // H → dumbbell (건강)
+    ko: '건강', en: 'Health', color: C.coral,
+    outer: 'M-128-48L-102-48L-102-78L-70-78L-70-15L70-15L70-78L102-78L102-48L128-48L128 48L102 48L102 78L70 78L70 15L-70 15L-70 78L-102 78L-102 48L-128 48Z',
+  },
+  { // A → palette (감성)
+    ko: '감성', en: 'Art-culture', color: C.purple,
+    outer: 'M-135 10C-135-80-60-130 20-130C105-130 145-75 140-25C136 15 100 20 80 18C50 15 40 40 55 65C70 95 40 125-10 125C-90 125-135 85-135 10Z',
+    hole: circ(70, -50, 24),
+  },
+  { // R → speech bubble (소통)
+    ko: '소통', en: 'Relationship', color: C.green,
+    outer: 'M-118-112Q-140-112-140-90L-140 28Q-140 50-118 50L-80 50L-104 108L-20 50L118 50Q140 50 140 28L140-90Q140-112 118-112Z',
+    hole: circ(0, -30, 0.5),
+  },
+  { // M → heart (인성)
+    ko: '인성', en: 'Morality', color: C.pink,
+    outer: 'M0-62C-30-132-140-122-140-30C-140 40-50 90 0 125C50 90 140 40 140-30C140-122 30-132 0-62Z',
+  },
+];
+const word = el('g', {}, cam);
+const letters = G.letters.map((L, i) => {
+  const ic = ICONS[i];
+  const gcx = (L.x0 + L.x1) / 2, gcy = -140;                 // glyph-space center
+  const wx = CX + WS * (L.dx + gcx), wy = WY + WS * gcy;      // world center
+  const outer = el('g', {}, word);                            // emerge + collapse transform
+  const inner = el('g', {}, outer);                           // icon-local motion (lift, beat)
+  const glyph = el('g', { transform: `translate(${CX} ${WY}) scale(${WS}) translate(${L.dx} 0)` }, inner);
+  // detail layer behind the body
+  const back = el('g', { transform: `translate(${gcx} ${gcy})` }, glyph);
+  const body = el('path', { d: L.outer, fill: C.blue, stroke: C.blue, 'stroke-width': 0, 'stroke-linejoin': 'round' }, glyph);
+  const clip = clipRect(L.x0 - 200, -600, 0, 1200);
+  const paint = el('path', { d: L.outer, fill: ic.color, 'clip-path': clip.url }, glyph);
+  const holeEl = el('path', { d: L.holes[0] || '', fill: C.bg }, glyph);
+  const front = el('g', { transform: `translate(${gcx} ${gcy})` }, glyph);
+  const toIcon = d => d; // icon paths are authored around (0,0); shift into glyph space below
+  const iconOuter = shiftPath(ic.outer, gcx, gcy);
+  const morph = flubber.interpolate(L.outer, iconOuter, { maxSegmentLength: 6 });
+  const holeMorph = L.holes[0] && ic.hole ? flubber.interpolate(L.holes[0], shiftPath(ic.hole, gcx, gcy), { maxSegmentLength: 6 }) : null;
+  const labelKo = riser(cam, ic.ko, { x: wx, y: 708, size: 50, weight: 800, fill: C.ink });
+  const labelEn = riser(cam, ic.en.toUpperCase(), { x: wx, y: 748, size: 20, weight: 700, fill: C.gray, ls: 3 });
+  return { L, ic, i, gcx, gcy, wx, wy, outer, inner, body, paint, clip, holeEl, back, front, morph, holeMorph, labelKo, labelEn, iconOuter };
+});
+function shiftPath(d, dx, dy) {
+  // shift absolute path coords (M L C Q A Z); A keeps radii/flags
+  const toks = d.match(/[MLCQAZ]|-?\d*\.?\d+/g);
+  let out = '', cmd = '', idx = 0;
+  for (const tk of toks) {
+    if (/[MLCQAZ]/.test(tk)) { cmd = tk; idx = 0; out += tk; continue; }
+    let v = parseFloat(tk);
+    if (cmd === 'A') { const k = idx % 7; if (k === 5) v += dx; if (k === 6) v += dy; }
+    else v += idx % 2 === 0 ? dx : dy;
+    out += (idx ? ' ' : '') + v; idx++;
+  }
+  return out;
+}
+
+// icon details
+const D = {};
+{ // bulb: base stripes + rays
+  const b = letters[0];
+  D.stripes = [76, 94].map(y => el('line', { x1: -55, y1: y, x2: -55, y2: y, stroke: C.blue, 'stroke-width': 9, 'stroke-linecap': 'round' }, b.front));
+  D.rays = [-160, -125, -90, -55, -20].map(a => ({ a, e: el('line', { stroke: C.blue, 'stroke-width': 16, 'stroke-linecap': 'round' }, b.back) }));
+}
+{ // palette: paint dots
+  const b = letters[2];
+  D.paints = [[-82, -18, C.yellow], [-40, -78, C.coral], [22, -92, C.green], [-68, 62, C.sky]].map(([x, y, c]) => el('circle', { cx: x, cy: y, r: 0, fill: c }, b.front));
+}
+{ // bubble: typing dots + reply bubble
+  const b = letters[3];
+  D.typing = [-55, 0, 55].map(x => el('circle', { cx: x, cy: -30, r: 0, fill: '#FFFFFF' }, b.front));
+  D.reply = el('g', {}, b.front);
+  const RB = 'M-70-60Q-90-60-90-40L-90 10Q-90 30-70 30L40 30L80 72L66 30L70 30Q90 30 90 10L90-40Q90-60 70-60Z';
+  el('path', { d: RB, fill: C.blue, stroke: C.bg, 'stroke-width': 22, 'stroke-linejoin': 'round', 'paint-order': 'stroke' }, D.reply);
+  D.heartMini = el('path', { d: 'M0-10C-6-24-28-22-28-6C-28 8-10 18 0 25C10 18 28 8 28-6C28-22 6-24 0-10Z', fill: '#FFFFFF', transform: 'translate(0 -18) scale(0)' }, D.reply);
+}
+{ // heart: little sparkle lines
+  const b = letters[4];
+  D.spark = [-135, -45].map(a => ({ a, e: el('line', { stroke: C.blue, 'stroke-width': 14, 'stroke-linecap': 'round' }, b.back) }));
+}
+
+// slogan + end lockup
+const slogan = riser(cam, '', { x: CX, y: 300, size: 64, weight: 800, spans: [['존중하며 성장하는 ', C.ink], ['참(CHARM)', C.blue], [' 좋은 학교', C.ink]] });
+const TITLE = '한라초등학교';
+let title;          // built after fonts load (needs measuring)
+let endLine;
+
+// ---------- timeline ----------
+const LOCK = { x: 590, y: 540, s: 1.1 }, LOCK_END = { x: 590, y: 500, s: 1.1 };
+const TITLE_X = 590 + 182 + 70;
+const T = {
+  dotPop: 0.05, toHead: 0.45, ring: 0.5, arms: 0.85, mono: 1.0, lock: 1.25, title: 1.35,
+  out: 2.25, pill: 2.3, label: 2.4, m1: 2.6, m2: 3.05, m3: 3.5, mottoOut: 4.0, burst: 4.42,
+  v0: 5.0, vstep: 1.2, pull: 11.0, slogan: 11.4, hop: 11.9, collapse: 12.5, dotBack: 12.78, head: 13.05,
+  ring2: 13.15, arms2: 13.35, mono2: 13.45, title2: 13.6, end: 13.95,
+};
+const camKeys = [[T.v0, 0]].concat(letters.slice(1).map((b, i) => [T.v0 + T.vstep * (i + 1), i + 1]));
+const vt = i => T.v0 + T.vstep * i;          // camera lands on letter i
+const mt = i => vt(i) + 0.22;                // morph starts
+
+function headOf(Lc) { return { x: Lc.x + 2 * Lc.s, y: Lc.y - 126 * Lc.s, r: 30 * Lc.s }; }
+
+async function frame(t) {
+  // camera
+  const cs = springs(t, 1, [[T.v0, 2.05], [T.pull, 1]], 9, 0.86);
+  const fx = springs(t, CX, camKeys.map(([t0, i]) => [t0, letters[i].wx]).concat([[T.pull, CX]]), 9, 0.86);
+  const fy = springs(t, CY, [[T.v0, letters[0].wy + 40], [T.pull, CY]], 9, 0.86);
+  cam.setAttribute('transform', `translate(${CX} ${CY}) scale(${cs}) translate(${-fx} ${-fy})`);
+
+  // logo
+  const lx = springs(t, CX, [[T.lock, LOCK.x], [T.collapse, LOCK_END.x]], 11, 0.8);
+  const ly = springs(t, CY, [[T.lock, LOCK.y], [T.collapse, LOCK_END.y]], 11, 0.8);
+  const ls = springs(t, 1.5, [[T.lock, LOCK.s], [T.collapse, LOCK_END.s]], 11, 0.8);
+  logo.setAttribute('transform', `translate(${lx} ${ly}) scale(${ls}) translate(-174 -190)`);
+  const ringA = 180 * (eout(win(t, T.ring, T.ring + 0.5)) - ein(win(t, T.out, T.out + 0.28)) + eout(win(t, T.ring2, T.ring2 + 0.45)));
+  ringPie.setAttribute('d', pie(174, 200, 220, -90 - ringA, -90 + ringA));
+  const armA = 75 * (eout(win(t, T.arms, T.arms + 0.4)) - ein(win(t, T.out, T.out + 0.22)) + eout(win(t, T.arms2, T.arms2 + 0.4)));
+  armPie.setAttribute('d', pie(174, 268, 240, -90 - armA, -90 + armA));
+  const ms = springs(t, 0, [[T.mono, 1, 16, 0.45], [T.out, 0, 20, 1], [T.mono2, 1, 16, 0.45]]);
+  mono.setAttribute('transform', `translate(174 190) scale(${Math.max(0, ms)}) translate(-174 -190)`);
+
+  // dot / pill
+  const h0 = headOf({ x: CX, y: CY, s: 1.5 }), h1 = headOf(LOCK), h2 = headOf(LOCK_END);
+  const pillH = [140, 260, 380];
+  const dw = springs(t, 0, [[T.dotPop, 2 * h0.r, 15, 0.45], [T.lock, 2 * h1.r, 11, 0.8], [T.pill, 900, 12, 0.7], [T.mottoOut + 0.1, 92, 14, 0.75], [T.burst, 0, 16, 0.9],
+    [T.dotBack, 92, 15, 0.5], [T.head, 2 * h2.r, 12, 0.8]]);
+  const dh = springs(t, 0, [[T.dotPop, 2 * h0.r, 15, 0.45], [T.lock, 2 * h1.r, 11, 0.8], [T.pill, pillH[0], 12, 0.7], [T.m2 - 0.05, pillH[1], 14, 0.65], [T.m3 - 0.05, pillH[2], 14, 0.65],
+    [T.mottoOut + 0.1, 92, 14, 0.75], [T.burst, 0, 16, 0.9], [T.dotBack, 92, 15, 0.5], [T.head, 2 * h2.r, 12, 0.8]]);
+  const dx = springs(t, CX, [[T.toHead, h0.x, 11, 0.75], [T.lock, h1.x, 11, 0.8], [T.pill, CX, 12, 0.8], [T.head, h2.x, 11, 0.8]]);
+  const dyC = springs(t, CY, [[T.toHead, h0.y, 11, 0.75], [T.lock, h1.y, 11, 0.8], [T.pill, PILL_TOP + pillH[0] / 2, 12, 0.8], [T.m2 - 0.05, PILL_TOP + pillH[1] / 2, 14, 0.65],
+    [T.m3 - 0.05, PILL_TOP + pillH[2] / 2, 14, 0.65], [T.mottoOut + 0.1, CY, 13, 0.8], [T.head, h2.y, 11, 0.8]]);
+  const aw = Math.max(0, dw), ah = Math.max(0, dh);
+  set(dot, { x: dx - aw / 2, y: dyC - ah / 2, width: aw, height: ah, rx: Math.min(aw, ah) / 2 });
+
+  // title, motto
+  drive(title, t, [[T.title, 1], [T.out, -1], [T.title2, 1]], 0.045);
+  drive(pillLabel, t, [[T.label, 1], [T.mottoOut, -1]]);
+  mottoLines.forEach((r, i) => drive(r, t, [[[T.m1, T.m2, T.m3][i], 1], [T.mottoOut + 0.04 * i, -1]]));
+
+  // letters → icons
+  letters.forEach(b => {
+    const { i } = b;
+    // emerge from the dot, collapse back into it
+    const e = spr(t, T.burst + 0.05 * i, 13, 0.55);
+    const k = Math.abs(i - 2);
+    const c = eio(win(t, T.collapse + 0.1 + 0.05 * (2 - k), T.collapse + 0.42 + 0.05 * (2 - k)));
+    const s = Math.max(0, e * (1 - c));
+    const ox = (CX - b.wx) * (1 - e + c * e), oy = (CY - b.wy) * (1 - e + c * e);
+    b.outer.setAttribute('transform', `translate(${ox} ${oy}) translate(${b.wx} ${b.wy}) scale(${s}) translate(${-b.wx} ${-b.wy})`);
+    b.outer.setAttribute('visibility', s > 0.001 ? 'inherit' : 'hidden');
+
+    const m = spr(t, mt(i), 11, 0.62);
+    b.body.setAttribute('d', m > 0 ? b.morph(clamp(m, -0.2, 1.15)) : b.L.outer);
+    b.paint.setAttribute('d', m > 0 ? b.morph(clamp(m, -0.2, 1.15)) : b.L.outer);
+    if (b.L.holes[0]) {
+      if (b.holeMorph) b.holeEl.setAttribute('d', m > 0 ? b.holeMorph(clamp(m, 0, 1.1)) : b.L.holes[0]);
+    }
+    const p = eio(win(t, mt(i) + 0.3, mt(i) + 0.62));
+    b.clip.rect.setAttribute('width', p * (b.L.x1 - b.L.x0 + 400));
+
+    // hop on the beat during the pull-back
+    const hop = pulse(t, T.hop + 0.08 * i, 18, 0.5, 0.12) + pulse(t, T.hop + 0.5 + 0.08 * i, 18, 0.5, 0.12);
+    let ix = 0, iy = -hop * 40, rot = 0, sc = 1;
+    if (i === 1) { // dumbbell lift
+      const lift = spr(t, mt(i) + 0.55, 18, 0.5) - spr(t, mt(i) + 0.8, 16, 0.55);
+      iy -= lift * 42; rot = -6 * lift;
+    }
+    if (i === 4) sc = 1 + 0.13 * (pulse(t, mt(i) + 0.6) + pulse(t, mt(i) + 0.85));
+    b.inner.setAttribute('transform', `translate(${ix} ${iy}) translate(${b.wx} ${b.wy}) rotate(${rot}) scale(${sc}) translate(${-b.wx} ${-b.wy})`);
+
+    drive(b.labelKo, t, [[mt(i) + 0.38, 1], [T.collapse + 0.03 * i, -1]]);
+    drive(b.labelEn, t, [[mt(i) + 0.46, 1], [T.collapse + 0.03 * i, -1]]);
+  });
+
+  // details
+  { const t0 = mt(0);
+    D.stripes.forEach((s, j) => s.setAttribute('x2', -55 + 110 * eio(win(t, t0 + 0.42 + 0.06 * j, t0 + 0.62 + 0.06 * j))));
+    D.rays.forEach(({ a, e }, j) => {
+      const g = spr(t, t0 + 0.5 + 0.035 * j, 16, 0.5);
+      const r0 = 130, r1 = 130 + 42 * Math.max(0, g), ca = Math.cos(a * Math.PI / 180), sa = Math.sin(a * Math.PI / 180);
+      set(e, { x1: ca * r0, y1: -30 + sa * r0, x2: ca * r1, y2: -30 + sa * r1, visibility: g > 0.01 ? 'inherit' : 'hidden' });
+    }); }
+  D.paints.forEach((e, j) => e.setAttribute('r', Math.max(0, 24 * spr(t, mt(2) + 0.5 + 0.06 * j, 16, 0.45))));
+  D.typing.forEach((e, j) => e.setAttribute('r', Math.max(0, 16 * spr(t, mt(3) + 0.45 + 0.08 * j, 18, 0.45))));
+  { const g = Math.max(0, spr(t, mt(3) + 0.62, 13, 0.5));
+    D.reply.setAttribute('transform', `translate(120 -120) scale(${-0.62 * g} ${0.62 * g})`);
+    const hg = Math.max(0, spr(t, mt(3) + 0.8, 16, 0.45));
+    D.heartMini.setAttribute('transform', `translate(0 -14) scale(${-1.2 * hg} ${1.2 * hg})`); }
+  D.spark.forEach(({ a, e }, j) => {
+    const g = Math.max(0, pulse(t, mt(4) + 0.6 + 0.25 * j, 14, 0.7, 0.18) * 1.4);
+    const r0 = 150, r1 = 150 + 40 * Math.min(1, g), ca = Math.cos(a * Math.PI / 180), sa = Math.sin(a * Math.PI / 180);
+    set(e, { x1: ca * r0, y1: -20 + sa * r0, x2: ca * r1, y2: -20 + sa * r1, visibility: g > 0.03 ? 'inherit' : 'hidden' });
+  });
+
+  drive(slogan, t, [[T.slogan, 1], [T.collapse - 0.05, -1]]);
+  drive(endLine, t, [[T.end, 1]]);
+}
+
+window.ready = (async () => {
+  await Promise.all(['600 20px Pretendard', '700 20px Pretendard', '800 20px Pretendard'].map(f => document.fonts.load(f, '한라초등학교 CHARM')));
+  await document.fonts.ready;
+  title = riser(cam, TITLE, { x: TITLE_X, y: 584, size: 120, weight: 800, fill: C.ink, anchor: 'start', perChar: true });
+  endLine = riser(cam, '존중하며 성장하는 참(CHARM) 좋은 학교', { x: CX, y: 760, size: 44, weight: 700, fill: C.gray });
+  window.seek = async t => { await seekAll(t); };
+})();
+async function seekAll(t) {
+  await frame(t);
+  // title follows the logo between the two lockups
+  const ly = springs(t, CY, [[T.lock, LOCK.y], [T.collapse, LOCK_END.y]], 11, 0.8);
+  title.g.setAttribute('transform', `translate(0 ${t > T.collapse ? ly - LOCK.y : 0})`);
+}
+</script>
+</body>
+</html>
