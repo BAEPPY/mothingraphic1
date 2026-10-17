@@ -283,15 +283,15 @@ let endLine;
 const LOCK = { x: 590, y: 540, s: 1.1 }, LOCK_END = { x: 590, y: 500, s: 1.1 };
 const TITLE_X = 590 + 182 + 70;
 const T = {
-  dotPop: 0.05, toHead: 0.45, ring: 0.5, arms: 0.85, mono: 1.0, lock: 1.25, title: 1.35,
-  out: 2.25, pill: 2.3, label: 2.4, m1: 2.6, m2: 3.05, m3: 3.5, mottoOut: 4.0, burst: 4.42,
-  v0: 5.0, vstep: 1.2, pull: 11.0, slogan: 11.4, hop: 11.9, collapse: 12.5, dotBack: 12.78,
-  ieum: 12.95, ieumOut: 15.2, head: 15.45,
-  ring2: 15.6, arms2: 15.8, mono2: 15.9, title2: 16.05, end: 16.4,
+  dotPop: 0.1, toHead: 0.6, ring: 0.65, arms: 1.1, mono: 1.3, lock: 1.65, title: 1.8,
+  out: 3.1, pill: 3.15, label: 3.3, m1: 3.5, m2: 4.15, m3: 4.8, mottoOut: 5.9, burst: 6.35,
+  v0: 7.1, vstep: 1.6, pull: 15.1, slogan: 15.55, hop: 16.2, collapse: 17.2, dotBack: 17.48,
+  ieum: 17.7, ieumOut: 21.4, head: 21.65,
+  ring2: 21.8, arms2: 22.0, mono2: 22.1, title2: 22.25, end: 22.6,
 };
 const camKeys = [[T.v0, 0]].concat(letters.slice(1).map((b, i) => [T.v0 + T.vstep * (i + 1), i + 1]));
 const vt = i => T.v0 + T.vstep * i;          // camera lands on letter i
-const mt = i => vt(i) + 0.22;                // morph starts
+const mt = i => vt(i) + 0.3;                // morph starts
 
 function headOf(Lc) { return { x: Lc.x + 2 * Lc.s, y: Lc.y - 126 * Lc.s, r: 30 * Lc.s }; }
 
@@ -391,9 +391,9 @@ async function frame(t) {
 
   // I-E.U.M
   const out = T.ieumOut;
-  const orbit = 120 * spr(t, T.ieum + 1.6, 8, 0.72);
+  const orbit = 120 * spr(t, T.ieum + 2.5, 7, 0.75);
   RINGS.forEach(o => {
-    const e = spr(t, T.ieum + 0.2 + 0.12 * o.k, 13, 0.55);
+    const e = spr(t, T.ieum + 0.25 + 0.2 * o.k, 13, 0.55);
     const c = eio(win(t, out + 0.04 * o.k, out + 0.3 + 0.04 * o.k));
     const g = Math.max(0, e * (1 - c));
     const a = (o.a + orbit) * Math.PI / 180;
@@ -402,24 +402,24 @@ async function frame(t) {
     const lx = IEUM.x + Math.cos(a) * (IEUM.d + 62) * g, ly = IEUM.y + Math.sin(a) * (IEUM.d + 62) * g;
     o.lg.setAttribute('transform', `translate(${lx} ${ly}) scale(${g})`);
     o.lg.setAttribute('visibility', g > 0.01 ? 'inherit' : 'hidden');
-    drive(o.big, t, [[T.ieum + 0.38 + 0.12 * o.k, 1]]);
-    drive(o.ko, t, [[T.ieum + 0.45 + 0.12 * o.k, 1]]);
+    drive(o.big, t, [[T.ieum + 0.45 + 0.2 * o.k, 1]]);
+    drive(o.ko, t, [[T.ieum + 0.53 + 0.2 * o.k, 1]]);
   });
   ARCS.forEach((A, k) => {
-    const d = eio(win(t, T.ieum + 0.75 + 0.08 * k, T.ieum + 1.05 + 0.08 * k)) - eio(win(t, out - 0.05, out + 0.15));
+    const d = eio(win(t, T.ieum + 1.4 + 0.15 * k, T.ieum + 1.8 + 0.15 * k)) - eio(win(t, out - 0.05, out + 0.15));
     A.arc.setAttribute('stroke-dasharray', `${Math.max(0, d) * 100} 200`);
     A.arc.setAttribute('visibility', d > 0.002 ? 'inherit' : 'hidden');
-    const h = Math.max(0, spr(t, T.ieum + 1.0 + 0.08 * k, 18, 0.5)) * (1 - ein(win(t, out - 0.05, out + 0.1)));
+    const h = Math.max(0, spr(t, T.ieum + 1.75 + 0.15 * k, 18, 0.5)) * (1 - ein(win(t, out - 0.05, out + 0.1)));
     A.head.setAttribute('transform', `translate(${A.x1} ${A.y1}) rotate(${A.ang}) scale(${h})`);
     A.head.setAttribute('visibility', h > 0.01 ? 'inherit' : 'hidden');
   });
   trioA.setAttribute('transform', `translate(${IEUM.x} ${IEUM.y}) rotate(${orbit})`);
   drive(iBig, t, [[T.ieum + 0.15, 1], [out, -1]]);
   drive(iKo, t, [[T.ieum + 0.22, 1], [out, -1]]);
-  { const b = Math.max(0, spr(t, T.ieum + 1.25, 14, 0.5)) * (1 - ein(win(t, out, out + 0.2)));
+  { const b = Math.max(0, spr(t, T.ieum + 2.2, 14, 0.5)) * (1 - ein(win(t, out, out + 0.2)));
     badge.setAttribute('transform', `translate(${IX + 150} 800) scale(${b})`);
     badge.setAttribute('visibility', b > 0.01 ? 'inherit' : 'hidden'); }
-  ieumText.forEach((r, k) => drive(r, t, [[T.ieum + 0.3 + 0.1 * k, 1], [out - 0.08 + 0.04 * k, -1]]));
+  ieumText.forEach((r, k) => drive(r, t, [[T.ieum + 0.5 + 0.22 * k, 1], [out - 0.08 + 0.04 * k, -1]]));
   drive(endLine, t, [[T.end, 1]]);
 }
 
