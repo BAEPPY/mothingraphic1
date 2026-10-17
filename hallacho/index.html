@@ -120,15 +120,24 @@ function drive(r, t, events, stagger = 0) {
 const cam = $('cam');
 
 // logo, authored in source-image coords (344x316), anchored at (174,190)
-const RING = 'M153 272L132 268C92 256 66 236 66 200C66 146 114 106 174 106C234 106 282 146 282 200C282 236 256 256 216 268L195 272L195 238C226 228 240 210 240 192C240 162 212 142 174 142C136 142 110 162 110 192C110 210 124 228 153 238L153 272Z';
+// body ring, measured from the logo image: outer ellipse, egg-shaped hole, open slot at the bottom
+const RING = (() => {
+  const O = { x: 172, y: 192, rx: 106.5, ry: 80 }, I = { x: 172, y: 186, rx: 63, ry: 49 }, SL = 151, SR = 193;
+  const at = (E, a) => `${(E.x + E.rx * Math.cos(a)).toFixed(2)} ${(E.y + E.ry * Math.sin(a)).toFixed(2)}`;
+  const oL = Math.acos((SL - O.x) / O.rx), oR = Math.acos((SR - O.x) / O.rx) + 2 * Math.PI;
+  const iR = Math.acos((SR - I.x) / I.rx), iL = Math.acos((SL - I.x) / I.rx) - 2 * Math.PI;
+  const pts = [];
+  for (let k = 0; k <= 160; k++) pts.push(at(O, oL + (oR - oL) * k / 160));
+  for (let k = 0; k <= 120; k++) pts.push(at(I, iR + (iL - iR) * k / 120));
+  return 'M' + pts.join('L') + 'Z';
+})();
 const logo = el('g', {}, cam);
 const armMask = el('clipPath', { id: 'armClip', clipPathUnits: 'userSpaceOnUse' }, $('defs'));
 const armPie = el('path', {}, armMask);
 const ringMask = el('clipPath', { id: 'ringClip', clipPathUnits: 'userSpaceOnUse' }, $('defs'));
 const ringPie = el('path', {}, ringMask);
-const arms = el('path', { d: 'M22 186A186 186 0 0 1 322 186', fill: 'none', stroke: C.blue, 'stroke-width': 10.5, 'stroke-linecap': 'round', 'clip-path': 'url(#armClip)' }, logo);
+const arms = el('path', { d: 'M20 189C28 146 82 111 172 110C262 111 316 146 324 189', fill: 'none', stroke: C.blue, 'stroke-width': 8.5, 'stroke-linecap': 'round', 'clip-path': 'url(#armClip)' }, logo);
 const ringG = el('g', { 'clip-path': 'url(#ringClip)' }, logo);
-el('path', { d: RING, fill: C.bg, stroke: C.bg, 'stroke-width': 11, 'stroke-linejoin': 'round' }, ringG);
 el('path', { d: RING, fill: C.blue }, ringG);
 // ㅎㄹ monogram, traced from the logo image: one top bar shared by ㅎ and ㄹ, a dome tick and a hanging ring
 const mono = el('g', { fill: C.blue, 'fill-rule': 'evenodd' }, logo);
@@ -296,7 +305,7 @@ const camKeys = [[T.v0, 0]].concat(letters.slice(1).map((b, i) => [T.v0 + T.vste
 const vt = i => T.v0 + T.vstep * i;          // camera lands on letter i
 const mt = i => vt(i) + 0.35;                // morph starts
 
-function headOf(Lc) { return { x: Lc.x + 2 * Lc.s, y: Lc.y - 126 * Lc.s, r: 30 * Lc.s }; }
+function headOf(Lc) { return { x: Lc.x - 2 * Lc.s, y: Lc.y - 126.5 * Lc.s, w: 70 * Lc.s, h: 59 * Lc.s }; }
 
 // ---------- effects ----------
 // tinted disc behind each CHARM icon while the camera is on it
@@ -333,15 +342,15 @@ async function frame(t) {
   // dot / pill
   const h0 = headOf({ x: CX, y: CY, s: 1.5 }), h1 = headOf(LOCK), h2 = headOf(LOCK_END);
   const pillH = [140, 260, 380];
-  const dw = springs(t, 0, [[T.dotPop, 2 * h0.r, 15, 0.45], [T.lock, 2 * h1.r, 11, 0.8], [T.pill, 900, 12, 0.7], [T.mottoOut + 0.1, 92, 14, 0.75], [T.burst, 0, 16, 0.9],
-    [T.dotBack, 92, 15, 0.5], [T.ieum, 2 * IEUM.rI, 13, 0.6], [T.head, 2 * h2.r, 12, 0.8]]);
-  const dh = springs(t, 0, [[T.dotPop, 2 * h0.r, 15, 0.45], [T.lock, 2 * h1.r, 11, 0.8], [T.pill, pillH[0], 12, 0.7], [T.m2 - 0.05, pillH[1], 14, 0.65], [T.m3 - 0.05, pillH[2], 14, 0.65],
-    [T.mottoOut + 0.1, 92, 14, 0.75], [T.burst, 0, 16, 0.9], [T.dotBack, 92, 15, 0.5], [T.ieum, 2 * IEUM.rI, 13, 0.6], [T.head, 2 * h2.r, 12, 0.8]]);
+  const dw = springs(t, 0, [[T.dotPop, h0.w, 15, 0.45], [T.lock, h1.w, 11, 0.8], [T.pill, 900, 12, 0.7], [T.mottoOut + 0.1, 92, 14, 0.75], [T.burst, 0, 16, 0.9],
+    [T.dotBack, 92, 15, 0.5], [T.ieum, 2 * IEUM.rI, 13, 0.6], [T.head, h2.w, 12, 0.8]]);
+  const dh = springs(t, 0, [[T.dotPop, h0.h, 15, 0.45], [T.lock, h1.h, 11, 0.8], [T.pill, pillH[0], 12, 0.7], [T.m2 - 0.05, pillH[1], 14, 0.65], [T.m3 - 0.05, pillH[2], 14, 0.65],
+    [T.mottoOut + 0.1, 92, 14, 0.75], [T.burst, 0, 16, 0.9], [T.dotBack, 92, 15, 0.5], [T.ieum, 2 * IEUM.rI, 13, 0.6], [T.head, h2.h, 12, 0.8]]);
   const dx = springs(t, CX, [[T.toHead, h0.x, 11, 0.75], [T.lock, h1.x, 11, 0.8], [T.pill, CX, 12, 0.8], [T.ieum, IEUM.x, 11, 0.8], [T.head, h2.x, 10, 0.82]]);
   const dyC = springs(t, CY, [[T.toHead, h0.y, 11, 0.75], [T.lock, h1.y, 11, 0.8], [T.pill, PILL_TOP + pillH[0] / 2, 12, 0.8], [T.m2 - 0.05, PILL_TOP + pillH[1] / 2, 14, 0.65],
     [T.m3 - 0.05, PILL_TOP + pillH[2] / 2, 14, 0.65], [T.mottoOut + 0.1, CY, 13, 0.8], [T.ieum, IEUM.y, 11, 0.8], [T.head, h2.y, 10, 0.82]]);
   const aw = Math.max(0, dw), ah = Math.max(0, dh);
-  set(dot, { x: dx - aw / 2, y: dyC - ah / 2, width: aw, height: ah, rx: Math.min(aw, ah) / 2 });
+  set(dot, { x: dx - aw / 2, y: dyC - ah / 2, width: aw, height: ah, rx: Math.min(aw / 2, ah / 2 + 6), ry: Math.min(ah / 2, aw / 2) });   // a true ellipse at the head, round-ended as a pill
 
   // title, motto
   drive(title, t, [[T.title, 1], [T.out, -1], [T.title2, 1]], 0.045);
