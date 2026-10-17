@@ -18,6 +18,7 @@
 <svg id="stage" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
   <defs id="defs"></defs>
   <rect width="1920" height="1080" fill="#F7F4EE"/>
+  <g id="floods"></g>
   <g id="cam"></g>
 </svg>
 <script>
@@ -171,6 +172,7 @@ const ICONS = [
     outer: 'M0-62C-30-132-140-122-140-30C-140 40-50 90 0 125C50 90 140 40 140-30C140-122 30-132 0-62Z',
   },
 ];
+const backdrops = el('g', {}, cam);
 const word = el('g', {}, cam);
 const letters = G.letters.map((L, i) => {
   const ic = ICONS[i];
@@ -283,22 +285,106 @@ let endLine;
 const LOCK = { x: 590, y: 540, s: 1.1 }, LOCK_END = { x: 590, y: 500, s: 1.1 };
 const TITLE_X = 590 + 182 + 70;
 const T = {
-  dotPop: 0.1, toHead: 0.6, ring: 0.65, arms: 1.1, mono: 1.3, lock: 1.65, title: 1.8,
-  out: 3.1, pill: 3.15, label: 3.3, m1: 3.5, m2: 4.15, m3: 4.8, mottoOut: 5.9, burst: 6.35,
-  v0: 7.1, vstep: 1.6, pull: 15.1, slogan: 15.55, hop: 16.2, collapse: 17.2, dotBack: 17.48,
-  ieum: 17.7, ieumOut: 21.4, head: 21.65,
-  ring2: 21.8, arms2: 22.0, mono2: 22.1, title2: 22.25, end: 22.6,
+  dotPop: 0.15, toHead: 0.75, ring: 0.8, arms: 1.35, mono: 1.6, lock: 2.0, title: 2.15,
+  out: 3.9, pill: 3.95, label: 4.1, m1: 4.35, m2: 5.15, m3: 5.95, mottoOut: 7.3, burst: 7.8,
+  v0: 8.6, vstep: 2.0, pull: 18.6, slogan: 19.1, hop: 19.9, collapse: 21.2, dotBack: 21.48,
+  ieum: 21.7, ieumOut: 26.4, head: 26.65,
+  ring2: 26.8, arms2: 27.05, mono2: 27.15, title2: 27.35, end: 27.75,
 };
 const camKeys = [[T.v0, 0]].concat(letters.slice(1).map((b, i) => [T.v0 + T.vstep * (i + 1), i + 1]));
 const vt = i => T.v0 + T.vstep * i;          // camera lands on letter i
-const mt = i => vt(i) + 0.3;                // morph starts
+const mt = i => vt(i) + 0.35;                // morph starts
 
 function headOf(Lc) { return { x: Lc.x + 2 * Lc.s, y: Lc.y - 126 * Lc.s, r: 30 * Lc.s }; }
+
+// ---------- effects ----------
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let x = Math.imul(seed ^ seed >>> 15, 1 | seed); x = x + Math.imul(x ^ x >>> 7, 61 | x) ^ x; return ((x ^ x >>> 14) >>> 0) / 4294967296; }; }
+const SHAPES = [
+  circ(0, 0, 1),
+  'M0-1.2L1.04 0.6L-1.04 0.6Z',
+  'M-0.35-1.1H0.35V-0.35H1.1V0.35H0.35V1.1H-0.35V0.35H-1.1V-0.35H-0.35Z',
+  'M-1 0A1 1 0 1 0 1 0A1 1 0 1 0-1 0ZM-0.55 0A0.55 0.55 0 1 1 0.55 0A0.55 0.55 0 1 1-0.55 0Z',
+  'M0-1.4Q0.16-0.16 1.4 0Q0.16 0.16 0 1.4Q-0.16 0.16-1.4 0Q-0.16-0.16 0-1.4Z',
+];
+const FX_COLORS = [C.blue, C.yellow, C.coral, C.green, C.pink, C.purple, C.sky];
+const fxLayer = el('g', {}, cam);
+// shape burst: n shapes fly out from (x, y), spin, and shrink to nothing
+const bursts = [];
+function burst(t0, x, y, R, n, size = 14, colors = FX_COLORS, dur = 0.75) {
+  const r = rng(Math.round(t0 * 1000 + x));
+  const parts = [];
+  for (let k = 0; k < n; k++) {
+    const e = el('path', { d: SHAPES[k % SHAPES.length], fill: colors[k % colors.length], 'fill-rule': 'evenodd' }, fxLayer);
+    parts.push({ e, a: (k / n) * Math.PI * 2 + (r() - 0.5) * 0.5, d: 0.6 + 0.5 * r(), s: size * (0.7 + 0.6 * r()), rot: r() * 360, spin: (r() - 0.5) * 540, dl: r() * 0.08 });
+  }
+  bursts.push({ t0, x, y, R, dur, parts });
+}
+// shock ring: expands while its stroke thins to zero
+const rings = [];
+function ring(t0, x, y, R, w, color, dur = 0.55) {
+  rings.push({ t0, x, y, R, w, dur, e: el('circle', { fill: 'none', stroke: color }, fxLayer) });
+}
+// colour floods: discs overscale past the corners one after another; the last is the canvas colour
+const floods = [];
+function flood(t0, x, y, colors, Rmax, stagger = 0.11, dur = 0.42) {
+  const discs = colors.map(c => el('circle', { cx: x, cy: y, r: 0, fill: c }, $('floods')));
+  floods.push({ t0, discs, Rmax, stagger, dur });
+}
+
+ring(T.dotPop + 0.05, CX, CY, 170, 14, C.blue);
+burst(T.mono + 0.12, CX, CY - 40, 360, 14, 16);
+ring(T.pill + 0.05, CX, PILL_TOP + 70, 520, 10, C.blue, 0.6);
+flood(T.mottoOut + 0.35, CX, CY, [C.blue, C.yellow, C.coral, C.green, C.bg], 1250);
+const TINT = ['#FFEAB0', '#FFD8CF', '#E3DAFC', '#CDEFE1', '#FFD6E2'];
+const bds = letters.map((b, i) => {
+  ring(mt(i) + 0.22, b.wx, b.wy, 230, 9, b.ic.color);
+  burst(mt(i) + 0.28, b.wx, b.wy, 250, 12, 13, [b.ic.color, C.blue, ...FX_COLORS.filter(c => c !== b.ic.color && c !== C.blue)].slice(0, 5));
+  return el('circle', { cx: b.wx, cy: b.wy, r: 0, fill: TINT[i] }, backdrops);
+});
+burst(T.slogan + 0.2, CX, 290, 620, 16, 12);
+RINGS.forEach((o, k) => {
+  const a = o.a * Math.PI / 180;
+  burst(T.ieum + 0.35 + 0.25 * k, IEUM.x + Math.cos(a) * IEUM.d, IEUM.y + Math.sin(a) * IEUM.d, 260, 9, 13, [o.color, C.blue, C.yellow]);
+});
+ring(T.ieum + 0.1, IEUM.x, IEUM.y, 260, 12, C.blue);
+burst(T.ieum + 2.85, IX + 150, 800, 210, 8, 11);
+flood(T.ieumOut + 0.05, IEUM.x, IEUM.y, [C.coral, C.purple, C.green, C.yellow, C.bg], 1550);
+burst(T.title2 + 0.35, 960, 520, 720, 22, 16, FX_COLORS, 0.95);
+ring(T.title2 + 0.3, LOCK_END.x, LOCK_END.y - 20, 300, 12, C.blue, 0.7);
+
+function effects(t) {
+  for (const B of bursts) for (const P of B.parts) {
+    const p = (t - B.t0 - P.dl) / B.dur;
+    if (p <= 0 || p >= 1) { P.e.setAttribute('visibility', 'hidden'); continue; }
+    const dist = B.R * P.d * (0.4 + 0.6 * eout(p));   // start outside the subject
+    const sc = P.s * (p < 0.12 ? eout(p / 0.12) : 1 - ein((p - 0.12) / 0.88));
+    P.e.setAttribute('visibility', 'inherit');
+    P.e.setAttribute('transform', `translate(${B.x + Math.cos(P.a) * dist} ${B.y + Math.sin(P.a) * dist}) rotate(${P.rot + P.spin * p}) scale(${sc})`);
+  }
+  for (const Rg of rings) {
+    const p = (t - Rg.t0) / Rg.dur;
+    if (p <= 0 || p >= 1) { Rg.e.setAttribute('visibility', 'hidden'); continue; }
+    set(Rg.e, { visibility: 'inherit', cx: Rg.x, cy: Rg.y, r: Rg.R * eout(p), 'stroke-width': Rg.w * (1 - eout(p)) });
+  }
+  for (const F of floods) {
+    const end = F.t0 + F.stagger * (F.discs.length - 1) + F.dur;
+    F.discs.forEach((d, k) => {
+      const p = eio(win(t, F.t0 + F.stagger * k, F.t0 + F.stagger * k + F.dur));
+      d.setAttribute('r', F.Rmax * p);
+      d.setAttribute('visibility', p > 0 && t < end ? 'inherit' : 'hidden');
+    });
+  }
+  bds.forEach((d, i) => {
+    const off = i < 4 ? vt(i + 1) - 0.05 : T.pull;
+    const g = Math.max(0, spr(t, mt(i) + 0.18, 11, 0.62)) * (1 - ein(win(t, off, off + 0.32)));
+    d.setAttribute('r', 340 * g);
+  });
+}
 
 async function frame(t) {
   // camera
   const cs = springs(t, 1, [[T.v0, 2.05], [T.pull, 1]], 9, 0.86);
-  const fx = springs(t, CX, camKeys.map(([t0, i]) => [t0, letters[i].wx]).concat([[T.pull, CX]]), 9, 0.86);
+  const fx = springs(t, CX, camKeys.map(([t0, i]) => [t0, letters[i].wx]).concat([[T.pull, CX]]), 7.5, 0.88);
   const fy = springs(t, CY, [[T.v0, letters[0].wy + 40], [T.pull, CY]], 9, 0.86);
   cam.setAttribute('transform', `translate(${CX} ${CY}) scale(${cs}) translate(${-fx} ${-fy})`);
 
@@ -391,9 +477,9 @@ async function frame(t) {
 
   // I-E.U.M
   const out = T.ieumOut;
-  const orbit = 120 * spr(t, T.ieum + 2.5, 7, 0.75);
+  const orbit = 120 * spr(t, T.ieum + 3.2, 6, 0.78);
   RINGS.forEach(o => {
-    const e = spr(t, T.ieum + 0.25 + 0.2 * o.k, 13, 0.55);
+    const e = spr(t, T.ieum + 0.3 + 0.25 * o.k, 13, 0.55);
     const c = eio(win(t, out + 0.04 * o.k, out + 0.3 + 0.04 * o.k));
     const g = Math.max(0, e * (1 - c));
     const a = (o.a + orbit) * Math.PI / 180;
@@ -402,25 +488,26 @@ async function frame(t) {
     const lx = IEUM.x + Math.cos(a) * (IEUM.d + 62) * g, ly = IEUM.y + Math.sin(a) * (IEUM.d + 62) * g;
     o.lg.setAttribute('transform', `translate(${lx} ${ly}) scale(${g})`);
     o.lg.setAttribute('visibility', g > 0.01 ? 'inherit' : 'hidden');
-    drive(o.big, t, [[T.ieum + 0.45 + 0.2 * o.k, 1]]);
-    drive(o.ko, t, [[T.ieum + 0.53 + 0.2 * o.k, 1]]);
+    drive(o.big, t, [[T.ieum + 0.55 + 0.25 * o.k, 1]]);
+    drive(o.ko, t, [[T.ieum + 0.65 + 0.25 * o.k, 1]]);
   });
   ARCS.forEach((A, k) => {
-    const d = eio(win(t, T.ieum + 1.4 + 0.15 * k, T.ieum + 1.8 + 0.15 * k)) - eio(win(t, out - 0.05, out + 0.15));
+    const d = eio(win(t, T.ieum + 1.8 + 0.18 * k, T.ieum + 2.25 + 0.18 * k)) - eio(win(t, out - 0.05, out + 0.15));
     A.arc.setAttribute('stroke-dasharray', `${Math.max(0, d) * 100} 200`);
     A.arc.setAttribute('visibility', d > 0.002 ? 'inherit' : 'hidden');
-    const h = Math.max(0, spr(t, T.ieum + 1.75 + 0.15 * k, 18, 0.5)) * (1 - ein(win(t, out - 0.05, out + 0.1)));
+    const h = Math.max(0, spr(t, T.ieum + 2.2 + 0.18 * k, 18, 0.5)) * (1 - ein(win(t, out - 0.05, out + 0.1)));
     A.head.setAttribute('transform', `translate(${A.x1} ${A.y1}) rotate(${A.ang}) scale(${h})`);
     A.head.setAttribute('visibility', h > 0.01 ? 'inherit' : 'hidden');
   });
   trioA.setAttribute('transform', `translate(${IEUM.x} ${IEUM.y}) rotate(${orbit})`);
   drive(iBig, t, [[T.ieum + 0.15, 1], [out, -1]]);
   drive(iKo, t, [[T.ieum + 0.22, 1], [out, -1]]);
-  { const b = Math.max(0, spr(t, T.ieum + 2.2, 14, 0.5)) * (1 - ein(win(t, out, out + 0.2)));
+  { const b = Math.max(0, spr(t, T.ieum + 2.8, 14, 0.5)) * (1 - ein(win(t, out, out + 0.2)));
     badge.setAttribute('transform', `translate(${IX + 150} 800) scale(${b})`);
     badge.setAttribute('visibility', b > 0.01 ? 'inherit' : 'hidden'); }
-  ieumText.forEach((r, k) => drive(r, t, [[T.ieum + 0.5 + 0.22 * k, 1], [out - 0.08 + 0.04 * k, -1]]));
+  ieumText.forEach((r, k) => drive(r, t, [[T.ieum + 0.6 + 0.28 * k, 1], [out - 0.08 + 0.04 * k, -1]]));
   drive(endLine, t, [[T.end, 1]]);
+  effects(t);
 }
 
 window.ready = (async () => {
